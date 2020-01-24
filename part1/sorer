@@ -45,9 +45,12 @@ def is_int(string):
         return False
 
 
+# A valid string cannot contain any white space if it is not surrounded by ""
+# ex: valid string: a, ab, " a b ", a12b
+#     invalid string: 1, ", a b
 def is_string(string):
-    if len(string) > 1 and string[1] == string[0] == '"': return True;
-    return string.isalpha()
+    if len(string) > 1 and string[0] == string[-1] == '"': return True
+    return " " not in string
 
 
 # read the first 500 lines to infer the schema
