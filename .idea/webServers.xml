@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="810ce87d-f4b8-484a-9579-00740c8a83b1" name="ccis" url="http://login.ccs.neu.edu">
+        <fileTransfer host="login.ccs.neu.edu" port="22" rootFolder="/home/liujiawen" accessType="SFTP">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" shareSSLContext="true" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
