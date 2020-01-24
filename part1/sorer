@@ -1,0 +1,193 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import argparse
+from enum import Enum
+import sys
+import os
+import re
+
+
+class Type(Enum):
+    String = 1
+    Int = 2
+    Float = 3
+    Bool = 4
+    Undefined = 5
+
+
+def get_options():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-f", '--file', dest='file', required=True, type=str)
+    parser.add_argument("-from", '--start', type=int, required=True)
+    parser.add_argument("-len", '--len', type=int, required=True)
+    parser.add_argument("-print_col_type", '--print_col_type', type=int)
+    parser.add_argument("-is_missing_idx", '--is_missing_idx', nargs='+', type=int)
+    parser.add_argument("-print_col_idx", '--print_col_idx', nargs='+', type=int)
+    options = parser.parse_args(sys.argv[1:])
+    return options
+
+
+# the given string does not contain any leading/trailing space
+def is_float(string):
+    try:
+        float(string)
+        return True
+    except Exception:
+        return False
+
+
+def is_int(string):
+    try:
+        int(string)
+        return True
+    except Exception:
+        return False
+
+
+def is_string(string):
+    if len(string) > 1 and string[1] == string[0] == '"': return True;
+    return string.isalpha()
+
+
+# read the first 500 lines to infer the schema
+def top_file(file, num_of_lines):
+    if not os.path.isfile(file): exit(1)
+    buffer = []
+    with open(file) as fp:
+        for i, line in enumerate(fp):
+            if i < num_of_lines:
+                buffer.append(re.findall(r'<\s*(.*?)\s*>', line))
+    fp.close()
+    return buffer
+
+
+def read_file(file, start, byte):
+    if not os.path.isfile(file): exit(1)
+    with open(file, 'r') as f:
+        f.seek(start)
+        buffer = f.read(byte)
+    f.close()
+    data = buffer.split('\n')
+    left = 0 if start == 0 else 1
+    right = -1 if start + byte < os.stat(file).st_size else len(data)
+    data = data[left:right]
+    for idx in range(0, len(data)): data[idx] = re.findall(r'<\s*(.*?)\s*>', data[idx])
+    return data
+
+
+# the given column will not contain leading or trailing white spaces
+def infer_column_type(column):
+    if not column:
+        return Type.Undefined
+    if is_string(column):
+        return Type.String
+    if column.isdigit():
+        return Type.Int if int(column) > 1 else Type.Bool
+    if len(column) > 1 and column[0] == '+':
+        return Type.Int
+    if is_float(column):
+        return Type.Float
+    else:
+        return Type.Undefined
+
+
+def update_schema(columns, schema):
+    for idx, col in enumerate(columns):
+        col_type = infer_column_type(col)
+        if schema[idx] is Type.Undefined:
+            schema[idx] = col_type
+        elif schema[idx] is Type.Bool and type is Type.Int:
+            schema[idx] = col_type
+    return
+
+
+def infer_schema(data):
+    longest_row = max(data, key=len)
+    schema = [Type.Undefined for i in longest_row]
+    for row in data:
+        update_schema(row, schema)
+    return schema
+
+
+def print_col_type(schema, idx):
+    if idx >= len(schema): exit(1)
+    mapper = {
+        Type.String: "STRING",
+        Type.Int: "INTEGER",
+        Type.Float: "FLOAT",
+        Type.Bool: "BOOL",
+        Type.Undefined: "UNDEFINED"
+    }
+    print(mapper[schema[idx]])
+
+
+# a cell is missing if
+# 1) data in the given cell does not match with the schema
+# 2) Type of the column has not been infered
+# 3) the given column/offset is invalid
+def is_missing_idx(data, column_idx, offset):
+    if offset >= len(data) or column_idx >= len(data[offset]): return True
+    return not data[offset][column_idx]
+
+
+# data is a matrix composed of columnar row [['a', 'b']..]
+def print_col_idx(data, column_idx, offset):
+    if offset >= len(data) or column_idx >= len(data[offset]): return
+    print(data[offset][column_idx])
+
+
+def columnize_data(schema, data):
+    for row in data:
+        for idx, col in enumerate(row):
+            type = infer_column_type(col)
+            if type is schema[idx] or type is Type.Bool and schema[idx] is Type.Int:
+                continue
+            else:
+                row[idx] = ""
+    return
+
+
+# store the schema onto disk for optimization purposes,
+# each column type is represented by its corresponding int value (ex: 1 2 3)
+def write_to_disk(schema, fileName):
+    buffer = ""
+    for type in schema:
+        buffer = buffer + " " + str(type.value)
+    with open("schema_" + fileName, 'w') as f:
+        f.write(buffer)
+    f.close()
+
+# the schema file contains 1 row of integers, each of which represents a specific Type
+def read_schema_from_disk(fileName):
+    if not os.path.isfile("schema_" + fileName): return None
+    with open("schema_" + fileName, 'r') as f:
+        schema = f.readline()
+    f.close()
+    if not schema: return None
+    return [Type(int(t)) for t in schema.split()]
+
+
+def main():
+    options = get_options()
+    schema = read_schema_from_disk(options.file)
+    if schema is None:
+        buffer = top_file(options.file, 500)
+        schema = infer_schema(buffer)
+        write_to_disk(schema, options.file)
+    if options.print_col_type is not None:
+        print_col_type(schema, options.print_col_type)
+        return
+    data = read_file(options.file, options.start, options.len)
+    columnize_data(schema, data)
+    if options.is_missing_idx:
+        if len(options.is_missing_idx) != 2: exit(1)
+        result = is_missing_idx(data, options.is_missing_idx[0], options.is_missing_idx[1])
+        print(1 if result else 0)
+    elif options.print_col_idx:
+        if len(options.print_col_idx) != 2: exit(1)
+        print_col_idx(data, options.print_col_idx[0], options.print_col_idx[1])
+
+
+if __name__ == "__main__":
+    main()
