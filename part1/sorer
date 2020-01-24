@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import argparse
@@ -32,7 +32,7 @@ def get_options():
 def is_float(string):
     try:
         float(string)
-        return True
+        return "." in string
     except Exception:
         return False
 
@@ -44,13 +44,14 @@ def is_int(string):
     except Exception:
         return False
 
-
 # A valid string cannot contain any white space if it is not surrounded by ""
-# ex: valid string: a, ab, " a b ", a12b
-#     invalid string: 1, ", a b
+# ex: valid string: a, ab, " a b ", a12b, "12", "\""
+#     invalid string: 1, ", a b,
 def is_string(string):
-    if len(string) > 1 and string[0] == string[-1] == '"': return True
-    return " " not in string
+    if len(string) > 1:
+        if string[0] == string[-1] == '"': return True
+        return not string.isdigit() and " " not in string
+    return string.isalpha()
 
 
 # read the first 500 lines to infer the schema
@@ -63,7 +64,6 @@ def top_file(file, num_of_lines):
                 buffer.append(re.findall(r'<\s*(.*?)\s*>', line))
     fp.close()
     return buffer
-
 
 def read_file(file, start, byte):
     if not os.path.isfile(file): exit(1)
@@ -79,20 +79,21 @@ def read_file(file, start, byte):
     return data
 
 
+
 # the given column will not contain leading or trailing white spaces
 def infer_column_type(column):
+    col_type = Type.Undefined
     if not column:
-        return Type.Undefined
+        return col_type
     if is_string(column):
-        return Type.String
-    if column.isdigit():
-        return Type.Int if int(column) > 1 else Type.Bool
+        col_type = Type.String
+    if is_int(column):
+        col_type = Type.Bool if column  in ['0', '1'] else Type.Int
     if len(column) > 1 and column[0] == '+':
-        return Type.Int
+        col_type = Type.Int
     if is_float(column):
-        return Type.Float
-    else:
-        return Type.Undefined
+        col_type = Type.Float
+    return col_type
 
 
 def update_schema(columns, schema):
@@ -100,7 +101,7 @@ def update_schema(columns, schema):
         col_type = infer_column_type(col)
         if schema[idx] is Type.Undefined:
             schema[idx] = col_type
-        elif schema[idx] is Type.Bool and type is Type.Int:
+        elif schema[idx] is Type.Bool and col_type is Type.Int:
             schema[idx] = col_type
     return
 
@@ -142,9 +143,10 @@ def print_col_idx(data, column_idx, offset):
 
 def columnize_data(schema, data):
     for row in data:
-        for idx, col in enumerate(row):
-            type = infer_column_type(col)
-            if type is schema[idx] or type is Type.Bool and schema[idx] is Type.Int:
+        row.extend(["" for i in range(len(row), len(schema))])
+        for idx, col_type in enumerate(schema):
+            type = infer_column_type(row[idx])
+            if type is col_type or type is Type.Bool and col_type is Type.Int:
                 continue
             else:
                 row[idx] = ""
